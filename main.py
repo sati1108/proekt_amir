@@ -1,79 +1,70 @@
 import tkinter as tk
-from tkinter import ttk, messagebox
+from tkinter import messagebox, Listbox
 import requests
 import json
 import os
 
-FAVORITES_FILE = "favorites.json"
+class GitHubUserFinder:
+    def __init__(self, master):
+        self.master = master
+        master.title("GitHub User Finder")
 
-class GitHubFinder:
-    def __init__(self, root):
-        self.root = root
-        self.root.title("GitHub User Finder")
-        self.root.geometry("400x500")
+        self.label = tk.Label(master, text="Введите имя пользователя GitHub:")
+        self.label.pack()
 
-        self.favorites = self.load_favorites()
+        self.entry = tk.Entry(master)
+        self.entry.pack()
 
-        # Интерфейс
-        main_frame = ttk.Frame(root, padding="10")
-        main_frame.pack(fill="both", expand=True)
+        self.search_button = tk.Button(master, text="Поиск", command=self.search_user)
+        self.search_button.pack()
 
-        ttk.Label(main_frame, text="Введите логин GitHub:").pack(fill="x")
-        
-        self.search_entry = ttk.Entry(main_frame)
-        self.search_entry.pack(fill="x", pady=5)
+        self.listbox = Listbox(master)
+        self.listbox.pack()
 
-        btn_frame = ttk.Frame(main_frame)
-        btn_frame.pack(fill="x", pady=5)
-        
-        ttk.Button(btn_frame, text="Найти", command=self.search_user).pack(side="left", expand=True, fill="x", padx=2)
-        ttk.Button(btn_frame, text="В избранное", command=self.add_to_favorites).pack(side="left", expand=True, fill="x", padx=2)
+        self.favorites_button = tk.Button(master, text="Добавить в избранное", command=self.add_to_favorites)
+        self.favorites_button.pack()
 
-        # Список результатов/избранного
-        self.results_list = tk.Listbox(main_frame, height=15)
-        self.results_list.pack(fill="both", expand=True, pady=10)
-        
-        ttk.Button(main_frame, text="Показать избранное", command=self.show_favorites).pack(fill="x")
+        self.load_favorites()
 
     def search_user(self):
-        username = self.search_entry.get().strip()
+        username = self.entry.get()
         if not username:
-            messagebox.showwarning("Внимание", "Поле поиска не должно быть пустым!")
+            messagebox.showwarning("Ошибка", "Поле поиска не должно быть пустым.")
             return
 
-        response = requests.get(f"https://github.com{username}")
-        
-        self.results_list.delete(0, tk.END)
+        response = requests.get(f"https://api.github.com/users/{username}")
         if response.status_code == 200:
-            data = response.json()
-            self.results_list.insert(tk.END, f"Логин: {data['login']}")
-            self.results_list.insert(tk.END, f"Имя: {data.get('name') or 'Не указано'}")
-            self.results_list.insert(tk.END, f"Репозитории: {data['public_repos']}")
-            self.results_list.insert(tk.END, f"Ссылка: {data['html_url']}")
+            user_data = response.json()
+            self.listbox.delete(0, tk.END)
+            self.listbox.insert(tk.END, f"{user_data['login']} - {user_data['html_url']}")
         else:
-            self.results_list.insert(tk.END, "Пользователь не найден")
+            messagebox.showerror("Ошибка", "Пользователь не найден.")
+
+    def add_to_favorites(self):
+        selected_user = self.listbox.curselection()
+        if not selected_user:
+            messagebox.showwarning("Ошибка", "Выберите пользователя для добавления в избранное.")
+            return
+
+        user_info = self.listbox.get(selected_user)
+        username = user_info.split(" - ")[0]
+        
+        favorites = self.load_favorites()
+        if username not in favorites:
+            favorites.append(username)
+            with open('favorites.json', 'w') as f:
+                json.dump(favorites, f)
+            messagebox.showinfo("Успех", f"{username} добавлен в избранное.")
+        else:
+            messagebox.showinfo("Информация", f"{username} уже в избранных.")
 
     def load_favorites(self):
-        if os.path.exists(FAVORITES_FILE):
-            with open(FAVORITES_FILE, "r", encoding="utf-8") as f:
+        if os.path.exists('favorites.json'):
+            with open('favorites.json', 'r') as f:
                 return json.load(f)
         return []
 
-    def add_to_favorites(self):
-        username = self.search_entry.get().strip()
-        if username and username not in self.favorites:
-            self.favorites.append(username)
-            with open(FAVORITES_FILE, "w", encoding="utf-8") as f:
-                json.dump(self.favorites, f, indent=4)
-            messagebox.showinfo("Успех", f"{username} добавлен в избранное")
-
-    def show_favorites(self):
-        self.results_list.delete(0, tk.END)
-        self.results_list.insert(tk.END, "-- ИЗБРАННЫЕ ПОЛЬЗОВАТЕЛИ --")
-        for user in self.favorites:
-            self.results_list.insert(tk.END, user)
-
 if __name__ == "__main__":
     root = tk.Tk()
-    app = GitHubFinder(root)
+    app = GitHubUserFinder(root)
     root.mainloop()
